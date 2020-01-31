@@ -1,0 +1,19 @@
+
+ENVI
+description = {
+   ANCILLARY INFO = DEM.
+   File generated with SARscape  5.2.1 }
+
+samples                   = 3600
+lines                     = 3600
+bands                     = 1
+headeroffset              = 0
+file type                 = ENVI Standard
+data type                 = 2
+sensor type               = Unknown
+interleave                = bsq
+byte order                = 0
+map info = {Geographic Lat/Lon, 1, 1, 6, 2, 0.0002777777777777778, 0.0002777777777777778, WGS-84, 
+ units=Degrees}
+x start                   = 1
+y start                   = 1
