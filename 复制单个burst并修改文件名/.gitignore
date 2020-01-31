@@ -1,0 +1,8 @@
+__pycache__/
+build/
+dist/
+*.ico
+*.png
+resource.qrc
+生成dem参数文件 - 副本.py
+生成dem参数文件.spec
