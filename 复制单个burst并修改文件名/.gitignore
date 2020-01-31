@@ -1,0 +1,6 @@
+__pycache__/
+build/
+dist/
+*.ico
+resource.qrc
+Copy_Change.spec
