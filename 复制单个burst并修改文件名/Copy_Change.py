@@ -109,8 +109,8 @@ class Window(QWidget):
         self.ted_info = QTextEdit(self)
         self.ted_info.setReadOnly(True)
         self.ted_info.setText(
-            "@author  : leiyuan \n@version : 2.1\n"
-            "@date    : 2020-01-28\n\n"
+            "@author  : leiyuan \n@version : 2.12\n"
+            "@date    : 2020-02-04\n\n"
             "burst信息文件说明:要求文件中有两列数据(date和burst)，以空格分开，"
             "110代表burst_IW1_10，以此类推\n"
             "20200102 19\n20200103 110")
