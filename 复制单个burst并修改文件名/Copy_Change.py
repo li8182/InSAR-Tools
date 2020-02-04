@@ -44,10 +44,11 @@ class ProcessFile:
                 # 该文件夹下所有burst文件
                 iw_files = os.listdir(os.path.join(file_path, file))
                 for f in iw_files:
-                    if burst in f:
-                        old_path = os.path.join(os.path.join(file_path, file), f)
-                        new_path = os.path.join(save_path, f.replace(burst, date))
-                        shutil.copy(old_path, new_path)
+                    if not f.endswith('.enp'):
+                        if burst in f:
+                            old_path = os.path.join(os.path.join(file_path, file), f)
+                            new_path = os.path.join(save_path, f.replace(burst, date))
+                            shutil.copy(old_path, new_path)
 
 
 class CopyThread(QThread):
@@ -64,13 +65,12 @@ class CopyThread(QThread):
     def run(self):
         start_time = datetime.datetime.now()
         date_burst_dict = ProcessFile.get_date_burst(self.burst_path)
-        self.sin_out_start.emit('需要复制并重命名大约 ' + str(len(date_burst_dict)) + ' * 9 个文件')
+        self.sin_out_start.emit('需要复制并重命名 ' + str(len(date_burst_dict)) + ' * 9 个文件\n')
         for i, j in date_burst_dict.items():
-            j = 'burst_IW' + j[0] + '_' + j[:-1]
+            j = 'burst_IW' + j[0] + '_' + j[-1:]
             ProcessFile.copy_change_filename(self.imported_path, i, j, self.save_path)
         end_time = datetime.datetime.now()
-        self.sin_out_start.emit('需要复制并重命名大约 ' + str(len(date_burst_dict)) + ' * 9 个文件\n')
-        self.sin_out_finish.emit('最终复制并重命名了 ' + str(len(os.listdir(self.save_path)) / 9) + ' * 9 个文件\n')
+        self.sin_out_finish.emit('最终复制并重命名了 ' + str(len(os.listdir(self.save_path)) // 9) + ' * 9 个文件\n')
         self.sin_out_time.emit('耗时 ' + str((end_time - start_time).seconds) + ' 秒\n')
 
 
@@ -168,7 +168,7 @@ class Window(QWidget):
 
     def get_saving_slot(self):
         dir_name = QFileDialog.getExistingDirectory(
-            self, '选择保存路径', '../'
+            self, '选择保存路径', './'
         )
         self.le_saving_path.setText(dir_name)
 
