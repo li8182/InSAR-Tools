@@ -24,7 +24,7 @@ class ProcessFile:
         date_burst = {}
         with open(burst_info_path) as file:
             for line in file:
-                if not line:
+                if line:
                     text = re.split(r'\s+', line.strip())
                     date_burst[text[0]] = text[1]
         return date_burst
