@@ -193,10 +193,10 @@ class Window(QWidget):
     def check_and_gen(self, path, interval):
         old = ['re_lon_west', 're_lon_east', 're_lat_north', 're_lat_south', 're_interval', 're_sample', 're_line']
         new = self.gen_dem_info(interval)
-        # SRTM 90m dem 参数文件行列数每 5°要加 1
-        if interval * 6000 == 5:
-            new[5] = str(int(new[5]) + int(new[5]) // 6000)
-            new[6] = str(int(new[6]) + int(new[6]) // 6000)
+        # # SRTM 90m dem 参数文件行列数每 5°要加 1
+        # if interval * 6000 == 5:
+        #     new[5] = str(int(new[5]) + int(new[5]) // 6000)
+        #     new[6] = str(int(new[6]) + int(new[6]) // 6000)
         if 'hdr' in path:
             GenerateParm.gen_envi_hdr(envi_hdr, old, new, path)
         elif 'sml' in path:
