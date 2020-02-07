@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
-envi_hdr = """
-ENVI
+envi_hdr = """ENVI
 description = {
    ANCILLARY INFO = DEM.
    File generated with SARscape  5.2.1 }
@@ -21,8 +20,7 @@ x start                   = 1
 y start                   = 1
 """
 
-envi_sml = """
-<?xml version="1.0" ?>
+envi_sml = """<?xml version="1.0" ?>
 <HEADER_INFO xmlns="http://www.sarmap.ch/xml/SARscapeHeaderSchema"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://www.sarmap.ch/xml/SARscapeHeaderSchema
@@ -67,7 +65,7 @@ envi_sml = """
    </CartographicSystem>
    <RegistrationCoordinates>
       <LatNorthing>re_lat_north</LatNorthing>
-      <LonEasting>re_lon_east</LonEasting>
+      <LonEasting>re_lon_west</LonEasting>
       <PixelSpacingLatNorth>-re_interval</PixelSpacingLatNorth>
       <PixelSpacingLonEast>re_interval</PixelSpacingLonEast>
    </RegistrationCoordinates>
@@ -75,15 +73,14 @@ envi_sml = """
       <EastingCoordinateBegin>re_lon_west</EastingCoordinateBegin>
       <EastingCoordinateEnd>re_lon_east</EastingCoordinateEnd>
       <EastingGridSize>re_interval</EastingGridSize>
-      <NorthingCoordinateBegin>re_lat_north</NorthingCoordinateBegin>
-      <NorthingCoordinateEnd>re_lat_south</NorthingCoordinateEnd>
+      <NorthingCoordinateBegin>re_lat_south</NorthingCoordinateBegin>
+      <NorthingCoordinateEnd>re_lat_north</NorthingCoordinateEnd>
       <NorthingGridSize>re_interval</NorthingGridSize>
    </DEMCoordinates>
 </HEADER_INFO>
 """
 
-gamma_par = """
-Gamma DIFF&GEO DEM/MAP parameter file
+gamma_par = """Gamma DIFF&GEO DEM/MAP parameter file
 title: Xiongben
 DEM_projection:     EQA
 data_format:        REAL*4
