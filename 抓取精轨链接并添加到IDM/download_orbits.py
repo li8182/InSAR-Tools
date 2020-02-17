@@ -4,9 +4,9 @@ import os
 if hasattr(sys, 'frozen'):
     os.environ['PATH'] = sys._MEIPASS + ";" + os.environ['PATH']
 from PyQt5.QtWidgets import QLabel, QPushButton, QTextEdit, QLineEdit, \
-    QRadioButton, QGridLayout, QWidget, QApplication, QSizePolicy, QFileDialog, QProgressBar
-from PyQt5.QtGui import QIcon, QFont
-from PyQt5.QtCore import QThread, pyqtSignal, Qt
+    QRadioButton, QGridLayout, QWidget, QApplication, QSizePolicy, QFileDialog, QProgressBar, QMessageBox
+from PyQt5.QtGui import QIcon, QFont, QDesktopServices, QColor
+from PyQt5.QtCore import QThread, pyqtSignal, Qt, QUrl
 from bs4 import BeautifulSoup
 from subprocess import call
 import requests
@@ -93,39 +93,38 @@ class ProcessData:
 
 
 class ExecIDMThread(QThread):
+    sin_out_warning = pyqtSignal(str)
+
     def __init__(self):
         super(ExecIDMThread, self).__init__()
         self.idm_path = ''
+        self.urls = []
 
     def run(self):
-        os.system(self.idm_path)
+        if self.urls:
+            os.system(self.idm_path)
+        else:
+            self.sin_out_warning.emit('请先抓取精轨链接或着等待精轨链接被抓取完毕')
 
 
-class DownloadThread(QThread):
+class GetUrlThread(QThread):
     sin_out_process = pyqtSignal(int)
     sin_out_task_num = pyqtSignal(int)
-    sin_out_success = pyqtSignal(str)
-    sin_out_error_num = pyqtSignal(str)
+    sin_out_urls = pyqtSignal(list)
 
     def __init__(self):
         super().__init__()
         self.images_path = ''
-        self.orbits_path = ''
-        self.idm_path = ''
-        self.error_num = 0
-
-    def get_download_urls(self, date_and_mission):
-        """
-        :param date_and_mission: Sentinel-1A/B date and mission
-        :return: urls of orbits
-        """
-        urls = []
-        url_prefix = 'https://qc.sentinel1.eo.esa.int/aux_poeorb/'
-        headers = {
+        self.urls = []
+        self.url_prefix = 'https://qc.sentinel1.eo.esa.int/aux_poeorb/'
+        self.headers = {
             'User-Agent':
                 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36\
-                     (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36'
-        }
+                     (KHTML, like Gecko) Chrome/55.0.2883.87 Safari/537.36'}
+
+    def run(self):
+        date_and_mission = ProcessData.get_sentinel1_date_and_mission(self.images_path)
+        self.sin_out_task_num.emit(len(date_and_mission))
         for d in date_and_mission:
             url_param_json = {}
             url_param_json['sentinel1__mission'] = d[-3:]
@@ -133,41 +132,63 @@ class DownloadThread(QThread):
             url_param_json['validity_start'] = \
                 orbit_date[0:4] + '-' + orbit_date[4:6] + '-' + orbit_date[-2:]
             url_param = urllib.parse.urlencode(url_param_json)
-            url = url_prefix + "?" + url_param
-            html = requests.get(url, headers=headers)
+            url = self.url_prefix + "?" + url_param
+            html = requests.get(url, headers=self.headers)
             dom = BeautifulSoup(html.text, "html.parser")
             eof = re.findall(r"http.*EOF", str(dom))
-            urls.append(eof[0])
+            self.urls.append(eof[0])
             index = date_and_mission.index(d) + 1
             self.sin_out_process.emit(index)
-        return urls
+        self.sin_out_urls.emit(self.urls)
+
+
+class AddToIDMThread(QThread):
+    sin_out_success = pyqtSignal(str)
+    sin_out_error_num = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.orbits_path = ''
+        self.idm_path = ''
+        self.urls = []
+        self.error_num = 0
 
     def run(self):
-        images_date_and_mission = ProcessData.get_sentinel1_date_and_mission(
-            self.images_path)
-        self.sin_out_task_num.emit(len(images_date_and_mission))
-        urls = self.get_download_urls(images_date_and_mission)
-        url_num, error_num = ProcessData.add_to_idm(self.idm_path, urls, self.orbits_path)
-        if error_num == 0 and url_num != 0:
-            self.sin_out_success.emit(
-                '\n' + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' 所有下载任务都被添加到了IDM')
-        elif error_num != 0:
-            self.sin_out_error_num.emit(
-                '\n' + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' 有' + str(error_num) + '未添加到IDM')
+        if self.urls:
+            url_num, error_num = ProcessData.add_to_idm(self.idm_path, self.urls, self.orbits_path)
+            if not error_num and url_num:
+                self.sin_out_success.emit(
+                    datetime.datetime.now().strftime(
+                        '%Y-%m-%d %H:%M:%S') + " 所有下载任务都被添加到了IDM")
+            elif error_num:
+                self.sin_out_error_num.emit(
+                    datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' 有 ' + str(
+                        error_num) + " 个未被添加到IDM")
+
+
+class TextEdit(QTextEdit):
+    def mousePressEvent(self, me):
+        super().mousePressEvent(me)
+        anchor = self.anchorAt(me.pos())
+        if anchor.endswith('.EOF'):
+            QDesktopServices.openUrl(QUrl(anchor))
 
 
 class DownloadOrbit(QWidget):
     def __init__(self):
         super().__init__()
-        self.download_thread = DownloadThread()
+        self.get_urls_thread = GetUrlThread()
+        self.add_to_idm_thread = AddToIDMThread()
         self.exec_idm_thread = ExecIDMThread()
 
-        self.setWindowTitle("Download Sentinel-1A/B Precise Orbit by IDM")
+        self.setWindowTitle("Download Sentinel-1A/B Precise Orbit")
         self.setFont(QFont('Consolas'))
         self.setWindowIcon(QIcon(':/orbit.ico'))
-        self.setWindowFlag(Qt.WindowStaysOnTopHint)
+        # self.setWindowFlag(Qt.WindowStaysOnTopHint)
         self.resize(800, 350)
+        self.setup_ui()
 
+    def setup_ui(self):
         self.label0 = QLabel('获取精轨日期模式: ', self)
         self.radio_btn1 = QRadioButton('file mode', self)
         self.radio_btn2 = QRadioButton('dir mode', self)
@@ -175,26 +196,31 @@ class DownloadOrbit(QWidget):
         self.label1 = QLabel('文本文件路径:', self)
         self.images_path = QLineEdit(self)
         self.images_path.setReadOnly(True)
-        self.label1.setBuddy(self.images_path)
+
         self.label2 = QLabel('精轨保存路径:', self)
         self.orbits_path = QLineEdit(self)
         self.orbits_path.setReadOnly(True)
-        self.label2.setBuddy(self.orbits_path)
+
         self.label3 = QLabel('IDMan.exe路径:', self)
         self.idm_path = QLineEdit(self)
         self.idm_path.setReadOnly(True)
-        self.label3.setBuddy(self.idm_path)
-        self.open_images_path = QPushButton('打开')
+
+        self.open_images_path = QPushButton('选择路径', self)
         self.open_images_path.setFixedSize(self.open_images_path.sizeHint())
-        self.open_orbits_path = QPushButton('打开')
-        self.open_idm_path = QPushButton('打开')
-        self.btn_add_to_idm = QPushButton('抓取链接\n\n并添加到IDM')
+        self.open_orbits_path = QPushButton('选择路径', self)
+        self.open_idm_path = QPushButton('选择路径', self)
+        self.btn_get_urls = QPushButton('抓取\n精轨链接', self)
+        self.btn_get_urls.setEnabled(False)
+        self.btn_get_urls.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.btn_add_to_idm = QPushButton('启动IDM\n并添加任务', self)
         self.btn_add_to_idm.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         self.btn_add_to_idm.setEnabled(False)
         self.label4 = QLabel('抓取链接进度：', self)
         self.url_process = QProgressBar(self)
         self.url_process.setValue(0)
-        self.info = QTextEdit(self)
+        self.info = TextEdit(self)
+        self.info.setFontUnderline(False)
+        self.info.setTextColor(QColor('black'))
         self.info.setReadOnly(True)
         self.info.setText("@author  : leiyuan \n@version : 3.1\n"
                           "@date    : 2020-01-11\n\n"
@@ -202,18 +228,27 @@ class DownloadOrbit(QWidget):
                           "\ndir  mode: 从'压缩文件'获取Sentinel-1A/B影像名，用于获取影像日期，从而获取精轨日期"
                           "\n\n温馨提示：为了能够更快地完成任务，请尽量翻越长城")
         # 信号与槽
-        self.download_thread.sin_out_task_num.connect(lambda num: self.task_num_slot(num))
-        self.download_thread.sin_out_process.connect(lambda value: self.url_process.setValue(value))
-        self.download_thread.sin_out_success.connect(lambda info: self.info.append(info))
-        self.download_thread.sin_out_error_num.connect(lambda info: self.info.append(info))
+        self.get_urls_thread.sin_out_urls.connect(self.assign_urls_slot)
+        self.get_urls_thread.sin_out_task_num.connect(self.task_num_slot)
+        self.get_urls_thread.sin_out_process.connect(lambda value: self.url_process.setValue(value))
+        self.exec_idm_thread.sin_out_warning.connect(self.warning_slot)
+        self.add_to_idm_thread.sin_out_success.connect(lambda info: self.info.append(info))
+        self.add_to_idm_thread.sin_out_error_num.connect(lambda info: self.info.append(info))
         self.url_process.valueChanged.connect(lambda value: self.success_get_slot(value))
+        self.images_path.textChanged.connect(self.switch_btn_get_urls_state_slot)
+        self.orbits_path.textChanged.connect(
+            lambda: self.switch_btn_add_to_idm_state_slot(self.orbits_path, self.idm_path))
+        self.idm_path.textChanged.connect(
+            lambda: self.switch_btn_add_to_idm_state_slot(self.orbits_path, self.idm_path))
         self.open_orbits_path.clicked.connect(self.get_orbits_path_slot)
         self.open_idm_path.clicked.connect(self.get_idm_path_slot)
         self.open_images_path.clicked.connect(self.get_images_name_by_file_slot)
         self.radio_btn1.toggled.connect(lambda: self.radio_btn_state_slot(self.radio_btn1))
         self.radio_btn2.toggled.connect(lambda: self.radio_btn_state_slot(self.radio_btn2))
-        self.btn_add_to_idm.clicked.connect(self.start_thread_slot)
-        # layout setting
+        self.btn_add_to_idm.clicked.connect(self.add_to_idm_slot)
+        self.btn_get_urls.clicked.connect(lambda: self.get_urls_thread.start())
+
+        # 设置布局
         layout = QGridLayout(self)
         self.setLayout(layout)
         layout.setSpacing(5)
@@ -225,7 +260,7 @@ class DownloadOrbit(QWidget):
         layout.addWidget(self.label1, 1, 1)
         layout.addWidget(self.images_path, 1, 2, 1, 3)
         layout.addWidget(self.open_images_path, 1, 5)
-        layout.addWidget(self.btn_add_to_idm, 1, 6, 4, 1)
+        layout.addWidget(self.btn_get_urls, 1, 6, 2, 1)
         # 第三行
         layout.addWidget(self.label2, 2, 1)
         layout.addWidget(self.orbits_path, 2, 2, 1, 3)
@@ -234,16 +269,23 @@ class DownloadOrbit(QWidget):
         layout.addWidget(self.label3, 3, 1)
         layout.addWidget(self.idm_path, 3, 2, 1, 3)
         layout.addWidget(self.open_idm_path, 3, 5)
+        layout.addWidget(self.btn_add_to_idm, 3, 6, 2, 1)
         # 第五行
         layout.addWidget(self.label4, 4, 1)
         layout.addWidget(self.url_process, 4, 2, 1, 4)
         # 第六行
         layout.addWidget(self.info, 5, 1, 3, 6)
 
+    def assign_urls_slot(self, urls):
+        self.add_to_idm_thread.urls = urls
+
     def task_num_slot(self, num):
-        if num != 0:
-            self.info.setText(
-                '\n' + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' 需要抓取 ' + str(num) + ' 个精轨链接')
+        if num:
+            self.info.clear()
+            # 添加一个开始锚点
+            self.info.append("<a name='begin'></a>")
+            self.info.insertPlainText(
+                '\n' + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' 需要抓取 ' + str(num) + ' 个精轨链接\n')
             self.url_process.setEnabled(True)
             self.url_process.setMaximum(num)
         else:
@@ -252,47 +294,70 @@ class DownloadOrbit(QWidget):
             self.url_process.setEnabled(False)
 
     def success_get_slot(self, value):
-        if value == self.url_process.maximum():
-            self.info.append('\n' + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' 成功抓取所有精轨链接，开始添加到IDM')
+        def get_date(u):
+            temp = re.findall(r"\d{8}", u)[-1]
+            temp = datetime.datetime(int(temp[0:4]), int(temp[4:6]), int(temp[6:8]))
+            delta = datetime.timedelta(days=-1)
+            date = temp + delta
+            return date.strftime('%Y%m%d')
 
-    def start_thread_slot(self):
-        self.url_process.setValue(0)
-        self.download_thread.images_path = self.images_path.text()
-        self.download_thread.orbits_path = self.orbits_path.text()
-        self.download_thread.idm_path = self.idm_path.text()
-        self.download_thread.start()
+        if value == self.url_process.maximum():
+            self.info.insertPlainText(
+                '\n' + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' 成功抓取所有精轨链接\n\n' + "*" * 50 + "\n\n")
+            for url in self.get_urls_thread.urls:
+                html = "精轨对应的影像日期（点击右侧日期即可下载）：<a href=" + url + ">" + get_date(url) + "</a>"
+                self.info.insertHtml(html)
+                self.info.append('\n')
+            self.info.append("<a name='end'>" + "*" * 50 + "</a>\n\n")
+            self.info.scrollToAnchor('begin')
+
+    def warning_slot(self, info):
+        """没有获取链接而点击添加到IDM时，弹出警告信息"""
+        mb = QMessageBox(QMessageBox.Warning, "Warning", info, QMessageBox.Ok, self)
+        mb.show()
+
+    def add_to_idm_slot(self):
+        self.exec_idm_thread.idm_path = self.idm_path.text()
+        self.exec_idm_thread.urls = self.add_to_idm_thread.urls
+        self.exec_idm_thread.start()
+        self.add_to_idm_thread.orbits_path = self.orbits_path.text()
+        self.add_to_idm_thread.idm_path = self.idm_path.text()
+        self.add_to_idm_thread.start()
+        self.info.scrollToAnchor('end')
 
     def get_images_name_by_dir_slot(self):
         dir_name = QFileDialog.getExistingDirectory(
-            self, '选择压缩文件路径', '../')
+            self, '选择压缩文件路径', './')
         self.images_path.setText(dir_name)
-        self.switch_btn_state(self.images_path, self.orbits_path, self.idm_path)
+        self.get_urls_thread.images_path = dir_name
 
     def get_images_name_by_file_slot(self):
         file_name = QFileDialog.getOpenFileName(
             self, '选择文本文件路径', './', 'All files(*.*);;txt file(*.txt)', 'txt file(*.txt)')
         self.images_path.setText(str(file_name[0]))
-        self.switch_btn_state(self.images_path, self.orbits_path, self.idm_path)
+        self.get_urls_thread.images_path = file_name[0]
+
+    def switch_btn_get_urls_state_slot(self, val):
+        if val:
+            self.btn_get_urls.setEnabled(True)
+        else:
+            self.btn_get_urls.setEnabled(False)
 
     def get_orbits_path_slot(self):
         dir_name = QFileDialog.getExistingDirectory(
             self, '选择精轨保存路径', '../')
         self.orbits_path.setText(dir_name)
-        self.switch_btn_state(self.images_path, self.orbits_path, self.idm_path)
 
-    def switch_btn_state(self, edit1, edit2, edit3):
-        if edit1.text() and edit2.text() and edit3.text():
+    def switch_btn_add_to_idm_state_slot(self, edit1, edit2):
+        if edit1.text() and edit2.text():
             self.btn_add_to_idm.setEnabled(True)
         else:
             self.btn_add_to_idm.setEnabled(False)
 
     def get_idm_path_slot(self):
         file_name = QFileDialog.getOpenFileName(
-            self, '选择IDMan.exe路径', 'C:/thorly/software/IDM', 'IDMan.exe (IDMan.exe)')
+            self, '选择IDMan.exe路径', 'C:/thorly/Softwares/IDM', 'IDMan.exe (IDMan.exe)')
         self.idm_path.setText(str(file_name[0]))
-        self.switch_btn_state(self.images_path, self.orbits_path, self.idm_path)
-        self.exec_idm_thread.idm_path = file_name[0]
-        self.exec_idm_thread.start()
 
     def radio_btn_state_slot(self, radio_btn):
         if radio_btn.text() == 'file mode' and radio_btn.isChecked():
