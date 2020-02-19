@@ -157,13 +157,11 @@ class AddToIDMThread(QThread):
         if self.urls:
             url_num, error_num = ProcessData.add_to_idm(self.idm_path, self.urls, self.orbits_path)
             if not error_num and url_num:
-                self.sin_out_success.emit(
-                    datetime.datetime.now().strftime(
-                        '%Y-%m-%d %H:%M:%S') + " 所有下载任务都被添加到了IDM")
+                time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                self.sin_out_success.emit("{} 所有下载任务都被添加到了IDM".format(time))
             elif error_num:
-                self.sin_out_error_num.emit(
-                    datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' 有 ' + str(
-                        error_num) + " 个未被添加到IDM")
+                time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                self.sin_out_error_num.emit("{} 有 {} 个未被添加到IDM".format(time, error_num))
 
 
 class TextEdit(QTextEdit):
@@ -189,36 +187,37 @@ class DownloadOrbit(QWidget):
         self.setup_ui()
 
     def setup_ui(self):
-        self.label0 = QLabel('获取精轨日期模式: ', self)
-        self.radio_btn1 = QRadioButton('file mode', self)
-        self.radio_btn2 = QRadioButton('dir mode', self)
+        self.label0 = QLabel('获取精轨日期模式：')
+        self.radio_btn1 = QRadioButton('file mode')
+        self.radio_btn2 = QRadioButton('dir mode')
         self.radio_btn1.setChecked(True)
-        self.label1 = QLabel('文本文件路径:', self)
-        self.images_path = QLineEdit(self)
+        self.label1 = QLabel('文本文件路径：')
+        self.images_path = QLineEdit()
         self.images_path.setReadOnly(True)
 
-        self.label2 = QLabel('精轨保存路径:', self)
-        self.orbits_path = QLineEdit(self)
+        self.label2 = QLabel('精轨保存路径：')
+        self.orbits_path = QLineEdit()
         self.orbits_path.setReadOnly(True)
 
-        self.label3 = QLabel('IDMan.exe路径:', self)
-        self.idm_path = QLineEdit(self)
+        self.label3 = QLabel('IDMan.exe路径：')
+        self.idm_path = QLineEdit()
         self.idm_path.setReadOnly(True)
 
-        self.open_images_path = QPushButton('选择路径', self)
+        self.open_images_path = QPushButton('选择路径')
         self.open_images_path.setFixedSize(self.open_images_path.sizeHint())
-        self.open_orbits_path = QPushButton('选择路径', self)
-        self.open_idm_path = QPushButton('选择路径', self)
-        self.btn_get_urls = QPushButton('抓取\n精轨链接', self)
+        self.open_orbits_path = QPushButton('选择路径')
+        self.open_idm_path = QPushButton('选择路径')
+        self.btn_get_urls = QPushButton('抓取\n精轨链接')
         self.btn_get_urls.setEnabled(False)
         self.btn_get_urls.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-        self.btn_add_to_idm = QPushButton('启动IDM\n并添加任务', self)
+        self.btn_add_to_idm = QPushButton('启动IDM\n并添加任务')
         self.btn_add_to_idm.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         self.btn_add_to_idm.setEnabled(False)
-        self.label4 = QLabel('抓取链接进度：', self)
-        self.url_process = QProgressBar(self)
-        self.url_process.setValue(0)
-        self.info = TextEdit(self)
+        self.label4 = QLabel('抓取链接进度：')
+        self.url_process = QProgressBar()
+        self.url_process.setValue(self.url_process.minimum() - 1)
+        self.url_process.setFormat("%v/%m")
+        self.info = TextEdit()
         self.info.setFontUnderline(False)
         self.info.setTextColor(QColor('black'))
         self.info.setReadOnly(True)
@@ -253,25 +252,25 @@ class DownloadOrbit(QWidget):
         self.setLayout(layout)
         layout.setSpacing(5)
         # 第一行
-        layout.addWidget(self.label0, 0, 1)
+        layout.addWidget(self.label0, 0, 1, Qt.AlignRight)
         layout.addWidget(self.radio_btn1, 0, 2)
         layout.addWidget(self.radio_btn2, 0, 3)
         # 第二行
-        layout.addWidget(self.label1, 1, 1)
+        layout.addWidget(self.label1, 1, 1, Qt.AlignRight)
         layout.addWidget(self.images_path, 1, 2, 1, 3)
         layout.addWidget(self.open_images_path, 1, 5)
         layout.addWidget(self.btn_get_urls, 1, 6, 2, 1)
         # 第三行
-        layout.addWidget(self.label2, 2, 1)
+        layout.addWidget(self.label2, 2, 1, Qt.AlignRight)
         layout.addWidget(self.orbits_path, 2, 2, 1, 3)
         layout.addWidget(self.open_orbits_path, 2, 5)
         # 第四行
-        layout.addWidget(self.label3, 3, 1)
+        layout.addWidget(self.label3, 3, 1, Qt.AlignRight)
         layout.addWidget(self.idm_path, 3, 2, 1, 3)
         layout.addWidget(self.open_idm_path, 3, 5)
         layout.addWidget(self.btn_add_to_idm, 3, 6, 2, 1)
         # 第五行
-        layout.addWidget(self.label4, 4, 1)
+        layout.addWidget(self.label4, 4, 1, Qt.AlignRight)
         layout.addWidget(self.url_process, 4, 2, 1, 4)
         # 第六行
         layout.addWidget(self.info, 5, 1, 3, 6)
@@ -281,34 +280,37 @@ class DownloadOrbit(QWidget):
 
     def task_num_slot(self, num):
         if num:
-            self.info.clear()
-            # 添加一个开始锚点
-            self.info.append("<a name='begin'></a>")
-            self.info.insertPlainText(
-                '\n' + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' 需要抓取 ' + str(num) + ' 个精轨链接\n')
             self.url_process.setEnabled(True)
             self.url_process.setMaximum(num)
+            self.url_process.setValue(0)
+            self.info.clear()
+            self.info.setFontUnderline(False)
+            self.info.setTextColor(QColor('black'))
+            # 添加一个开始锚点
+            self.info.append("<a name='begin'></a>")
+            time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            self.info.insertPlainText("\n{} 需要抓取 {} 个精轨链接\n".format(time, num))
         else:
-            self.info.setText(
-                '\n' + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' 输入文件或者文件夹路径有误，请查看')
+            time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            self.info.setText("\n{} 输入文件或者文件夹路径有误，请查看".format(time))
             self.url_process.setEnabled(False)
 
     def success_get_slot(self, value):
         def get_date(u):
             temp = re.findall(r"\d{8}", u)[-1]
-            temp = datetime.datetime(int(temp[0:4]), int(temp[4:6]), int(temp[6:8]))
+            temp = datetime.datetime(int(temp[:4]), int(temp[4:6]), int(temp[6:]))
             delta = datetime.timedelta(days=-1)
             date = temp + delta
             return date.strftime('%Y%m%d')
 
         if value == self.url_process.maximum():
-            self.info.insertPlainText(
-                '\n' + datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' 成功抓取所有精轨链接\n\n' + "*" * 50 + "\n\n")
+            time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            self.info.insertPlainText('\n{} 成功抓取所有精轨链接\n\n{}\n\n'.format(time, '*' * 50))
             for url in self.get_urls_thread.urls:
-                html = "精轨对应的影像日期（点击右侧日期即可下载）：<a href=" + url + ">" + get_date(url) + "</a>"
+                html = "精轨对应的影像日期（点击右侧日期即可下载）：<a href={}>{}</a>".format(url, get_date(url))
                 self.info.insertHtml(html)
                 self.info.append('\n')
-            self.info.append("<a name='end'>" + "*" * 50 + "</a>\n\n")
+            self.info.append("<a name='end'>{}</a>\n\n".format("*" * 50))
             self.info.scrollToAnchor('begin')
 
     def warning_slot(self, info):
@@ -367,7 +369,7 @@ class DownloadOrbit(QWidget):
             except:
                 pass
             self.open_images_path.clicked.connect(self.get_images_name_by_file_slot)
-            self.label1.setText('文本文件路径:')
+            self.label1.setText('文本文件路径：')
         if radio_btn.text() == 'dir mode' and radio_btn.isChecked():
             try:
                 self.open_images_path.clicked.disconnect(self.get_images_name_by_file_slot)
@@ -375,7 +377,7 @@ class DownloadOrbit(QWidget):
             except:
                 pass
             self.open_images_path.clicked.connect(self.get_images_name_by_dir_slot)
-            self.label1.setText('压缩文件路径:')
+            self.label1.setText('压缩文件路径：')
 
 
 if __name__ == "__main__":
