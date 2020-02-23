@@ -1,0 +1,76 @@
+QTextEdit {
+    background-color: rgb(240,240,240);
+    border: 2px dashed darkcyan;
+    padding: 10px;
+    border-radius: 5px;
+}
+QLineEdit {
+    height: 25px;
+    padding-left: 1px;
+    padding-right: 1px;
+    border-radius: 5px;
+    border: 1px solid black;
+}
+QLineEdit:focus {
+    border: 1px solid darkturquoise;
+}
+QSpinBox {
+    height: 25px;
+    padding-left: 8px;
+    padding-right: 40px;
+    border:1px solid gray;
+    border-radius: 5px;
+}
+QSpinBox:focus {
+    border:1px solid darkturquoise;
+}
+QSpinBox::up-button {
+    width: 20px;
+    height: 20px;
+    subcontrol-origin: margin;
+    subcontrol-position: right center;
+    right: 25px;
+    image: url(:/up-normal.png);
+}
+QSpinBox::up-button:pressed {
+    width: 18px;
+    height: 18px;
+    subcontrol-origin: margin;
+    subcontrol-position: right center;
+    right: 26px;
+    image: url(:/up-pressed.png);
+}
+QSpinBox::down-button {
+    width: 20px;
+    height: 20px;
+    subcontrol-origin: margin;
+    subcontrol-position: right center;
+    right: 4px;
+    image: url(:/down-normal.png);
+}
+QSpinBox::down-button:pressed {
+    width: 18px;
+    height: 18px;
+    subcontrol-origin: margin;
+    subcontrol-position: right center;
+    right: 5px;
+    image: url(:/down-pressed.png);
+}
+QPushButton#btn {
+    border-radius: 5px;
+    background-color: lightcyan;
+    border: 1px solid black;
+}
+QPushButton#btn:hover {
+    background-color: darkturquoise;
+    border: 1px solid black;
+}
+QPushButton#btn:pressed {
+    background-color: darkcyan;
+    border: 2px solid black;
+}
+QRadioButton::indicator:checked {
+    image: url(:/checked.png);
+    width: 16px;
+    height: 16px;
+}
