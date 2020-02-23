@@ -1,4 +1,5 @@
 __pycache__/
 download_orbits - 副本.py
 orbit.ico
-resource.qrc
+*.png
+resource_rc.qrc
