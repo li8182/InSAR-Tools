@@ -1,11 +1,19 @@
 from PyQt5.Qt import *
-import sys
 import os
+import sys
 import time
+import math
 import datetime
-import resource
 from subprocess import call
 from srtm import srtm_dem_no
+import resource
+
+
+class QSSTool:
+    @staticmethod
+    def set_qss_to_obj(qss_path, obj):
+        with open(qss_path, 'r') as f:
+            obj.setStyleSheet(f.read())
 
 
 class ExecIDMThread(QThread):
@@ -45,7 +53,7 @@ class IDMThread(QThread):
                 except:
                     self.error_num += 1
         else:
-            self.sin_no_url.emit('未找到下载链接，请先获取下载链接')
+            self.sin_no_url.emit('未找到任何下载链接，请先获取下载链接')
         self.sin_error_num.emit(self.error_num)
 
 
@@ -67,7 +75,7 @@ class Window(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Download DEM')
-        self.setWindowIcon(QIcon(':/download.ico'))
+        self.setWindowIcon(QIcon(':/download.png'))
         self.setFont(QFont('Consolas'))
         self.resize(800, 400)
         self.exec_thread = ExecIDMThread()
@@ -77,9 +85,9 @@ class Window(QWidget):
     def setup_ui(self):
         # 添加控件
         self.lb_dem = QLabel('DEM类型：')
-        self.radio_srtm = QRadioButton('SRTM 90m (3s)')
+        self.radio_srtm = QRadioButton('SRTM 90m DEM (3s)')
         self.radio_srtm.setChecked(True)
-        self.radio_alos = QRadioButton('ALOS 30m (1s)')
+        self.radio_alos = QRadioButton('ALOS 30m DEM (1s)')
         self.lb_lon = QLabel('最小、最大经度：')
         self.spin_lon_w = QSpinBox()
         self.spin_lon_w.setRange(-180, 180)
@@ -105,11 +113,13 @@ class Window(QWidget):
         self.spin_lat_n.setAccelerated(True)
 
         self.btn_url = QPushButton('获取DEM下载链接')
+        font = QFont()
+        font.setPixelSize(20)
+        self.btn_url.setFont(font)
         self.btn_url.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        self.btn_add_idm = QPushButton('启动IDM\n并添加任务')
+        self.btn_add_idm = QPushButton('启动IDM\n 并添加任务 ')
         self.btn_add_idm.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-        self.btn_add_idm.setEnabled(False)
 
         self.lb_dir = QLabel('DEM保存路径：')
         self.le_dir = QLineEdit()
@@ -119,12 +129,18 @@ class Window(QWidget):
         self.lb_idm = QLabel('IDMan.exe路径：')
         self.le_idm = QLineEdit()
         self.btn_idm = QPushButton('选择路径')
+        self.btn_idm.setFixedSize(self.btn_idm.sizeHint())
+
+        self.btn_url.setObjectName("btn")
+        self.btn_dir.setObjectName("btn")
+        self.btn_idm.setObjectName("btn")
+        self.btn_add_idm.setObjectName("btn")
 
         self.ted_info = TextEdit()
         self.ted_info.setReadOnly(True)
         self.ted_info.setText(
-            "@author  : leiyuan \n@version : 2.0\n"
-            "@date    : 2020-02-19\n\n"
+            "@author  : leiyuan \n@version : 2.5\n"
+            "@date    : 2020-02-23\n\n"
             "该工具包含两种下载模式:\n\n"
             "1. 利用电脑默认浏览器下载（设置好经纬度范围，点击<获取下载链接>即可）\n\n"
             "2. 利用IDM进行下载（获取下载链接后，设置DEM保存路径和IDMan.exe路径，点击<添加到IDM>即可）")
@@ -132,6 +148,8 @@ class Window(QWidget):
         # 布局设置
         layout = QGridLayout()
         self.setLayout(layout)
+        layout.setColumnStretch(1, 1)
+        layout.setColumnStretch(2, 1)
         # 第一行
         layout.addWidget(self.lb_dem, 0, 0, Qt.AlignRight)
         layout.addWidget(self.radio_srtm, 0, 1)
@@ -162,8 +180,6 @@ class Window(QWidget):
         self.btn_dir.clicked.connect(self.open_dir_slot)
         self.btn_idm.clicked.connect(self.choose_idm_slot)
         self.btn_add_idm.clicked.connect(self.add_to_idm_slot)
-        self.le_idm.textChanged.connect(lambda: self.set_btn_add_state_slot(self.le_idm, self.le_dir))
-        self.le_dir.textChanged.connect(lambda: self.set_btn_add_state_slot(self.le_idm, self.le_dir))
         self.idm_thread.sin_no_url.connect(self.warning_slot)
         self.idm_thread.sin_error_num.connect(self.error_num_slot)
 
@@ -174,28 +190,33 @@ class Window(QWidget):
 
     def error_num_slot(self, error_num):
         """是否全部添加到IDM"""
-        if error_num == 0 and self.idm_thread.url:
-            # 添加一个开始锚点
-            time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            self.ted_info.append('{} 所有任务都被添加到IDM'.format(time))
-        else:
-            time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            self.ted_info.append('{}有 {} 个任务未被添加到IDM'.format(time_now, len(self.idm_thread.url) - error_num))
+        if len(self.idm_thread.url):
+            if error_num == 0:
+                time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                self.ted_info.append('{} 所有任务都被添加到IDM'.format(time_now))
+            else:
+                time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                self.ted_info.append('{} 有 {} 个任务未被添加到IDM'.format(time_now, len(self.idm_thread.url) - error_num))
 
     def gen_url_slot(self):
         """获取DEM下载链接"""
         download_url = []
         html = []
-        no_srtm = []
+        no_srtm = []  # for srtm
         srtm_url_header = "http://srtm.csi.cgiar.org/wp-content/uploads/files/srtm_5x5/tiff/srtm_"
         alos_url_header = "https://www.eorc.jaxa.jp/ALOS/aw3d30/data/release_v1903/"
-        if self.spin_lon_w.value() >= self.spin_lon_e.value() or self.spin_lat_s.value() >= self.spin_lat_n.value():
+        lon_w = self.spin_lon_w.value()
+        lon_e = self.spin_lon_e.value()
+        lat_s = self.spin_lat_s.value()
+        lat_n = self.spin_lat_n.value()
+        if lon_w >= lon_e or lat_s >= lat_n:
             self.warning_slot('经纬度范围错误，请重新设置')
+        # 获取SRTM DEM下载链接
         if self.radio_srtm.isChecked():
-            if self.spin_lat_s.value() < -60 or self.spin_lat_n.value() > 60:
-                self.warning_slot('SRTM dem 纬度范围在-60° ~ 60°之间，请重新选择纬度范围，或者选择ALOS dem')
+            if (lat_s < -60 or lat_n > 60) and lon_w < lon_e and lat_s < lat_n:
+                self.warning_slot('SRTM DEM 纬度范围在-60° ~ 60°之间，请重新选择纬度范围，或者选择ALOS DEM')
             else:
-                # 编号计算起始点经纬度
+                # 计算编号起始点经纬度
                 lon_min = -180
                 lat_max = 60
                 # 计算dem编号
@@ -211,6 +232,7 @@ class Window(QWidget):
                     num_min_lat = int(num_min_lat)
                 if num_max_lat > int(num_max_lat):
                     num_max_lat = int(num_max_lat + 1)
+                # 遍历生成下载链接
                 for i in range(int(num_min_lon), int(num_max_lon)):
                     for j in range(int(num_min_lat), int(num_max_lat)):
                         # 计算dem的经纬度范围
@@ -236,14 +258,16 @@ class Window(QWidget):
                             download_url.append(url)
                             html.append("{} <a href={}>{}</a>".format(lon_lat, url, name))
                         else:
-                            no_srtm.append("{} 此范围内无DEM".format(lon_lat))
+                            no_srtm.append("{} 此范围内无SRTM DEM".format(lon_lat))
+        # 获取ALOS DEM下载链接
         else:
-            import math
+            # 计算经纬度，必须为5的倍数
             lon_min = (self.spin_lon_w.value()) // 5 * 5
             lon_max = math.ceil((self.spin_lon_e.value()) / 5) * 5
             lat_min = (self.spin_lat_s.value()) // 5 * 5
             lat_max = math.ceil((self.spin_lat_n.value()) / 5) * 5
 
+            # 格式化函数，补零操作
             def format_num(num, flag):
                 if num < 0:
                     zero_num = flag - len(str(num)[1:])
@@ -258,6 +282,7 @@ class Window(QWidget):
                     else:
                         return str(num)
 
+            # 遍历获取下载链接
             for i in range(lat_min, lat_max, 5):
                 for j in range(lon_min, lon_max, 5):
                     i_5, j_5 = i + 5, j + 5
@@ -270,63 +295,81 @@ class Window(QWidget):
                     url = alos_url_header + name
                     download_url.append(url)
                     html.append("{} <a href={}>{}</a>".format(lon_lat, url, name))
-        # 每次点击获取链接按钮后，清空内容
-        self.ted_info.clear()
-        self.ted_info.setFontUnderline(False)
-        self.ted_info.setTextColor(QColor('black'))
-        # 添加一个开始锚点
-        self.ted_info.append("<a name='begin'></a>")
-        self.ted_info.insertPlainText(
-            datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + "\n\n获取到 " + str(
-                len(download_url)) + " 个DEM下载链接（点击文件名即可使用默认浏览器下载DEM）")
-        self.ted_info.append("\n")
-        # 插入可用的dem链接
-        for i in range(len(html)):
-            self.ted_info.insertHtml(str(i + 1) + "：" + html[i])
-            self.ted_info.append('\n')
-        # 插入不可用的dem信息(适用于SRTM)
-        self.ted_info.setFontUnderline(False)
-        self.ted_info.setTextColor(QColor('black'))
-        for j in range(len(no_srtm)):
-            self.ted_info.insertPlainText(str(len(html) + j + 1) + "：" + no_srtm[j] + "\n\n")
-        # 滚动到锚点
-        self.ted_info.scrollToAnchor('begin')
-        self.idm_thread.url = download_url
-        self.exec_thread.url = download_url
+        # 获取到下载链接时，才显示相关信息
+        if len(download_url) or len(no_srtm):
+            # 每次点击获取链接按钮后，清空内容
+            self.ted_info.clear()
+            # 设置不含超链接字体的下划线和颜色
+            self.ted_info.setFontUnderline(False)
+            self.ted_info.setTextColor(QColor('black'))
+            # 添加一个开始锚点
+            self.ted_info.append("<a name='begin'></a>")
+            # 插入获取到的DEM链接总数
+            self.ted_info.insertPlainText(
+                datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + "\n\n获取到 " + str(
+                    len(download_url)) + " 个DEM下载链接（点击文件名即可使用默认浏览器下载DEM）")
+            self.ted_info.append("\n")
+            # 插入获取到的DEM链接
+            for i in range(len(html)):
+                self.ted_info.insertHtml(str(i + 1) + "：" + html[i])
+                self.ted_info.append('\n')
+            # 设置不含超链接字体的下划线和颜色
+            self.ted_info.setFontUnderline(False)
+            self.ted_info.setTextColor(QColor('black'))
+            # 插入不可用的DEM信息(适用于SRTM)
+            for j in range(len(no_srtm)):
+                self.ted_info.insertPlainText(str(len(html) + j + 1) + "：" + no_srtm[j] + "\n\n")
+            # 滚动到开始锚点
+            self.ted_info.scrollToAnchor('begin')
+            self.idm_thread.url = download_url
+            self.exec_thread.url = download_url
 
     def open_dir_slot(self):
         """打开对话框，选择DEM保存路径"""
         dir_name = QFileDialog.getExistingDirectory(
             self, '选择保存路径', './')
-        self.le_dir.setText(dir_name)
-        self.idm_thread.save_path = dir_name
+        if dir_name:
+            self.le_dir.setText(dir_name)
+        self.idm_thread.save_path = self.le_dir.text()
 
     def choose_idm_slot(self):
         """打开对话框，选择IDMan.exe路径"""
         file_name = QFileDialog.getOpenFileName(
             self, '选择IDMan.exe', 'C:/thorly/Softwares/IDM', 'IDMan.exe(IDMan.exe)')
-        self.le_idm.setText(file_name[0])
-        self.idm_thread.idm_path = file_name[0]
-        self.exec_thread.idm_path = file_name[0]
+        if file_name[0]:
+            self.le_idm.setText(file_name[0])
+        self.idm_thread.idm_path = self.le_idm.text()
+        self.exec_thread.idm_path = self.le_idm.text()
 
     def add_to_idm_slot(self):
         """打开IDM并添加任务到IDM"""
-        self.exec_thread.start()
-        self.idm_thread.start()
-        if self.idm_thread.url:
-            self.ted_info.clear()
-            self.ted_info.append(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' 开始添加任务到IDM\n')
-
-    def set_btn_add_state_slot(self, le1, le2):
-        """设置添加到IDM按钮是否可用"""
-        if le1.text() and le2.text():
-            self.btn_add_idm.setEnabled(True)
+        # 未设置路径或路径设置有误时，发出警告
+        save_path = self.le_dir.text()
+        idm_path = self.le_idm.text()
+        if not save_path and not idm_path:
+            self.warning_slot("请设置DEM保存路径和IDMan.exe路径")
+        elif not save_path and idm_path:
+            self.warning_slot("请设置DEM保存路径")
+        elif not idm_path and save_path:
+            self.warning_slot("请设置IDMan.exe路径")
+        elif not os.path.exists(save_path) and not os.path.exists(idm_path):
+            self.warning_slot("DEM保存路径和IDMan.exe路径不存在，请重新设置")
+        elif not os.path.exists(save_path):
+            self.warning_slot("DEM保存路径不存在，请重新设置")
+        elif not os.path.exists(idm_path):
+            self.warning_slot("IDMan.exe路径不存在，请重新设置")
         else:
-            self.btn_add_idm.setEnabled(False)
+            self.exec_thread.start()
+            self.idm_thread.start()
+            if self.idm_thread.url:
+                self.ted_info.clear()
+                self.ted_info.append(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + ' 开始添加任务到IDM\n')
 
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = Window()
+    # 设置样式
+    QSSTool.set_qss_to_obj('download_dem.qss', app)
     window.show()
     sys.exit(app.exec_())
