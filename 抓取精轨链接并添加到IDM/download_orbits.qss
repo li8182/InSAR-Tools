@@ -1,0 +1,68 @@
+QProgressBar {
+    border: 1px solid darkcyan;
+    border-radius: 5px;
+    text-align: center;
+    color: orange;
+    font-size: 15px;
+    background-color: aliceblue;
+}
+QProgressBar::chunk {
+    background-color: darkcyan;
+    width: 10px;
+    margin: 0px;
+}
+QRadioButton::indicator:checked {
+    image: url(:/checked.png);
+    width: 16px;
+    height: 16px;
+}
+QTextEdit {
+    background-color: rgb(240,240,240);
+    border: 2px dashed darkcyan;
+    padding: 10px;
+    border-radius: 5px;
+}
+QLineEdit {
+    height: 25px;
+    padding-left: 1px;
+    padding-right: 1px;
+    border-radius: 5px;
+    border: 1px solid black;
+}
+QLineEdit:focus {
+    border: 1px solid darkturquoise;
+}
+QPushButton#btn_image_path,#btn_idm_path,#btn_orbit_path {
+    border-radius: 5px;
+    background-color: lightcyan;
+    border: 1px solid black;
+}
+QPushButton#btn_image_path:hover,#btn_idm_path:hover,#btn_orbit_path:hover {
+    background-color: darkturquoise;
+    border: 1px solid black;
+}
+QPushButton#btn_image_path:pressed,#btn_idm_path:pressed,#btn_orbit_path:pressed {
+    background-color: darkcyan;
+    border: 2px solid black;
+}
+QPushButton#btn_get_urls {
+    width: 120px;
+    height: 25px;
+    border-radius: 5px;
+    background-color: lightcyan;
+    border: 1px solid black;
+}
+QPushButton#btn_add_to_idm {
+    width: 120px;
+    border-radius: 5px;
+    background-color: lightcyan;
+    border: 1px solid black;
+}
+QPushButton#btn_get_urls:hover,#btn_add_to_idm:hover {
+    background-color: darkturquoise;
+    border: 1px solid black;
+}
+QPushButton#btn_get_urls:pressed,#btn_add_to_idm:pressed {
+    background-color: darkcyan;
+    border: 2px solid black;
+}
