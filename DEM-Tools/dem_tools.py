@@ -9,7 +9,8 @@ import datetime
 import numpy as np
 from osgeo import gdal
 from subprocess import call
-from dem_mosaic_ui import Ui_Form
+from plot_figure import PlotFigure
+from dem_tools_ui import Ui_Form
 from parm import envi_hdr, envi_sml, gamma_par, srtm_dem_no
 
 
@@ -64,15 +65,16 @@ class WriteXYZThread(QThread):
         self.dem_data = []  # 原始的高程数据
         self.xyz_path = ""  # 保存路径，包含文件名
 
-    def run(self):
-        big_lon_w, big_lon_e = int(self.dem_par[0]), int(self.dem_par[1])
-        big_lat_n, big_lat_s = int(self.dem_par[2]), int(self.dem_par[3])
-        sample, line = int(self.dem_par[5]), int(self.dem_par[6])
+    @staticmethod
+    def get_small_data(dem_par, lon_lat, dem_data):
+        big_lon_w, big_lon_e = int(dem_par[0]), int(dem_par[1])
+        big_lat_n, big_lat_s = int(dem_par[2]), int(dem_par[3])
+        sample, line = int(dem_par[5]), int(dem_par[6])
         big_lon_interval = big_lon_e - big_lon_w
         big_lat_interval = big_lat_n - big_lat_s
         # 根据经纬度范围计算裁剪的行列号
-        small_lon_w, small_lon_e = self.lon_lat[0], self.lon_lat[1]
-        small_lat_n, small_lat_s = self.lon_lat[2], self.lon_lat[3]
+        small_lon_w, small_lon_e = lon_lat[0], lon_lat[1]
+        small_lat_n, small_lat_s = lon_lat[2], lon_lat[3]
         small_lon_interval = small_lon_e - small_lon_w
         small_lat_interval = small_lat_n - small_lat_s
         start_sample = int((small_lon_w - big_lon_w) / big_lon_interval * sample)
@@ -86,13 +88,17 @@ class WriteXYZThread(QThread):
         b = np.linspace(small_lat_s, small_lat_n, line_num)
         lon, lat = np.meshgrid(a, b)
         # 裁剪原始高程数据
-        height = np.array(self.dem_data)[start_line:end_line, start_sample:end_sample]
+        height = np.array(dem_data)[start_line:end_line, start_sample:end_sample]
+        return height, lon, lat
+
+    def run(self):
+        height, lon, lat = self.get_small_data(self.dem_par, self.lon_lat, self.dem_data)
         # 写文件
         with open(self.xyz_path, 'w+') as f:
             for i, j, k in zip(lon.flatten(), lat.flatten(), height.flatten()):
                 f.write(str(i) + '\t' + str(j) + '\t' + str(k) + '\n')
         # 写文件完成，发射完成信号
-        self.sin_out_xyz_success.emit("ok")
+        self.sin_out_xyz_success.emit("写入文件完成\n")
 
 
 class WriteDEMThread(QThread):
@@ -123,13 +129,14 @@ class WriteDEMThread(QThread):
         if self.flag == "envi":
             self.write_dem(np.array(self.data), self.path, np.short)
             self.replace_str(envi_hdr, self.old, self.new, self.path + ".hdr")
-            self.sin_out_success.emit("制作完成")
+            self.sin_out_success.emit("成功制作适用于envi的DEM\n")
         elif self.flag == "gamma":
             self.write_dem(np.array(self.data), self.path, np.float32)
             self.replace_str(gamma_par, self.old, self.new, self.path + ".par")
-            self.sin_out_success.emit("制作完成")
+            self.sin_out_success.emit("成功制作适用于gamma的DEM\n")
         else:
-            print('不支持doris')
+            self.write_dem(np.array(self.data), self.path, np.short)
+            self.sin_out_success.emit("成功制作适用于doris的DEM，但是无参数文件\n")
 
 
 class MosaicThread(QThread):
@@ -173,17 +180,26 @@ class MosaicThread(QThread):
         for i in str_list:
             if len(i) == 4:
                 if i[1] != '0':
-                    num_list.append(int(i[1:]))
+                    if i[0] == 'E' or i[0] == 'N':
+                        num_list.append(int(i[1:]))
+                    else:
+                        num_list.append(int('-' + i[1:]))
                 elif i[2] != '0':
-                    num_list.append(int(i[2:]))
+                    if i[0] == 'E' or i[0] == 'N':
+                        num_list.append(int(i[2:]))
+                    else:
+                        num_list.append(int('-' + i[2:]))
                 else:
-                    num_list.append(int(i[3:]))
+                    if i[0] == 'E' or i[0] == 'N':
+                        num_list.append(int(i[3:]))
+                    else:
+                        num_list.append(int('-' + i[3:]))
             else:
                 if i[0] != '0':
                     num_list.append(int(i))
                 else:
                     num_list.append(int(i[1:]))
-        return num_list
+        return sorted(num_list)
 
     def run(self):
         base_path, names, lon_str, lat_str = self.get_lon_lat(self.abs_path_list)
@@ -196,9 +212,17 @@ class MosaicThread(QThread):
         lat_equal = (list(range(min(lat_num), max(lat_num) + 1)) == lat_num)
         if num_equal and lon_equal and lat_equal:
             if "AVE_DSM" in names[0]:
-                for lat in lat_str:
-                    for lon in lon_str:
-                        name = "{}{}_AVE_DSM.tif".format(lat, lon)
+                for lat in lat_num:
+                    for lon in lon_num:
+                        if lat < 0:
+                            tmp_lat = "S{}{}".format('0' * (3 - len(str(abs(lat)))), abs(lat))
+                        else:
+                            tmp_lat = "N{}{}".format('0' * (3 - len(str(lat))), lat)
+                        if lon < 0:
+                            tmp_lon = "W{}{}".format('0' * (3 - len(str(abs(lon)))), abs(lon))
+                        else:
+                            tmp_lon = "E{}{}".format('0' * (3 - len(str(lon))), lon)
+                        name = "{}{}_AVE_DSM.tif".format(tmp_lat, tmp_lon)
                         abs_path = os.path.join(base_path, name)
                         line.append(self.read_tif(abs_path))
                     sample.append(np.concatenate(line, axis=1))
@@ -214,7 +238,7 @@ class MosaicThread(QThread):
                 line = 3600 * len(lat_num)
                 sample = 3600 * len(lon_num)
                 self.dem_info = "{},{},{},{},{},{},{}".format(lon_w, lon_e, lat_n, lat_s, interval, sample, line)
-                self.sin_out_success.emit('拼接完成')
+                self.sin_out_success.emit('成功读取/拼接tif文件\n')
             elif "srtm" in names[0]:
                 for lat in lat_str:
                     for lon in lon_str:
@@ -233,7 +257,7 @@ class MosaicThread(QThread):
                 line = 6000 * len(lat_num)
                 sample = 6000 * len(lon_num)
                 self.dem_info = "{},{},{},{},{},{},{}".format(lon_w, lon_e, lat_n, lat_s, interval, sample, line)
-                self.sin_out_success.emit('拼接完成')
+                self.sin_out_success.emit('成功读取/拼接tif文件\n')
         else:
             print('error')
         self.sin_out_dem_info.emit(self.dem_info)
@@ -273,9 +297,32 @@ class ProcessDEM(QWidget, Ui_Form):
         self.radioButton_doris.toggled.connect(lambda: self.get_flag(self.radioButton_doris))
         self.write_dem_thread.sin_out_success.connect(self.make_dem_success)
         # 制作xyz
+        self.pushButton_plot_small.clicked.connect(self.plot_small_data)
         self.write_xyz_thread.sin_out_xyz_success.connect(self.write_xyz_success)
         self.pushButton_xyz_path.clicked.connect(self.get_xyz_path)
         self.pushButton_to_xyz.clicked.connect(self.write_xyz)
+
+    def plot_small_data(self):
+        dem_par = self.mosaic_thread.dem_info.split(',')
+        lon_w_b = int(dem_par[0])
+        lon_e_b = int(dem_par[1])
+        lat_n_b = int(dem_par[2])
+        lat_s_b = int(dem_par[3])
+        lon_w = self.doubleSpinBox_lon_w.value() if self.doubleSpinBox_lon_w.value() > lon_w_b else lon_w_b
+        lon_e = self.doubleSpinBox_lon_e.value() if self.doubleSpinBox_lon_e.value() < lon_e_b else lon_e_b
+        lat_n = self.doubleSpinBox_lat_n.value() if self.doubleSpinBox_lat_n.value() < lat_n_b else lat_n_b
+        lat_s = self.doubleSpinBox_lat_s.value() if self.doubleSpinBox_lat_s.value() > lat_s_b else lat_s_b
+        lon_lat = [lon_w, lon_e, lat_n, lat_s]
+        dem_data = self.mosaic_thread.dem_data
+        if dem_data:
+            height, _, _ = WriteXYZThread.get_small_data(dem_par, lon_lat, dem_data)
+            fig = PlotFigure(width=5, height=5, dpi=100)
+            fig.axes.imshow(height, cmap='rainbow')
+            fig.show()
+            time_start = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.textEdit_info.append("{} 绘图完成\n".format(time_start))
+        else:
+            self.popup_warning("请先读取/拼接tif文件")
 
     def get_urls(self):
         """获取DEM下载链接"""
@@ -369,11 +416,19 @@ class ProcessDEM(QWidget, Ui_Form):
                     j_0 = "W{}".format(format_num(j, 3)) if j < 0 else "E{}".format(format_num(j, 3))
                     i_5 = "S{}".format(format_num(i_5, 3)) if i_5 < 0 else "N{}".format(format_num(i_5, 3))
                     j_5 = "W{}".format(format_num(j_5, 3)) if j_5 < 0 else "E{}".format(format_num(j_5, 3))
-                    lon_lat = "({}° ~ {}° , {}° ~ {}°)".format(j_0[1:], j_5[1:], i_0[1:], i_5[1:])
+                    # 判断经纬度的正负
+                    tmp_lon_s = j_0[1:] if 'E' in j_0 else '-' + j_0[1:]
+                    tmp_lon_b = j_5[1:] if 'E' in j_5 else '-' + j_5[1:]
+                    tmp_lat_s = i_0[1:] if 'N' in i_0 else '-' + i_0[1:]
+                    tmp_lat_b = i_5[1:] if 'N' in i_5 else '-' + i_5[1:]
+                    lon_lat = "({}° ~ {}° , {}° ~ {}°)".format(tmp_lon_s, tmp_lon_b, tmp_lat_s, tmp_lat_b)
                     name = "{}{}_{}{}.tar.gz".format(i_0, j_0, i_5, j_5)
                     url = alos_url_header + name
                     download_url.append(url)
                     html.append("{} <a href={}>{}</a>".format(lon_lat, url, name))
+        else:
+            if lon_w < lon_e and lat_s < lat_n:
+                self.popup_warning("请选择DEM分辨率")
         # 获取到下载链接时，才显示相关信息
         if len(download_url) or len(no_srtm):
             # 每次点击获取链接按钮后，清空内容
@@ -384,9 +439,8 @@ class ProcessDEM(QWidget, Ui_Form):
             # 添加一个开始锚点
             self.textEdit_info.append("<a name='begin'></a>")
             # 插入获取到的DEM链接总数
-            self.textEdit_info.insertPlainText(
-                datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S') + "\n\n获取到 " + str(
-                    len(download_url)) + " 个DEM下载链接（点击文件名即可使用默认浏览器下载DEM）")
+            time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            self.textEdit_info.insertPlainText("{} 获取到 {} 个DEM下载链接".format(time_now, len(download_url)))
             self.textEdit_info.append("\n")
             # 插入获取到的DEM链接
             for i in range(len(html)):
@@ -458,14 +512,31 @@ class ProcessDEM(QWidget, Ui_Form):
                     '{} 有 {} 个任务未被添加到IDM'.format(time_now, len(self.add_to_idm_thread.url) - error_num))
 
     def write_xyz(self):
+        # doubleSpinBox中的经纬度
+        lon_w = self.doubleSpinBox_lon_w.value()
+        lon_e = self.doubleSpinBox_lon_e.value()
+        lat_n = self.doubleSpinBox_lat_n.value()
+        lat_s = self.doubleSpinBox_lat_s.value()
         self.write_xyz_thread.xyz_path = self.lineEdit_xyz_path.text()
         self.write_xyz_thread.dem_data = self.mosaic_thread.dem_data
-        self.write_xyz_thread.lon_lat = [self.doubleSpinBox_lon_w.value(), self.doubleSpinBox_lon_e.value(),
-                                         self.doubleSpinBox_lat_n.value(), self.doubleSpinBox_lat_s.value()]
-        time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.textEdit_info.append("{} {}".format(time_now, "ok"))
-        self.pushButton_to_xyz.setEnabled(False)
-        self.write_xyz_thread.start()
+        self.write_xyz_thread.lon_lat = [lon_w, lon_e, lat_n, lat_s]
+        if not self.write_xyz_thread.dem_data:
+            self.popup_warning("未找到数据，请先读取/拼接tif文件")
+        elif not self.write_xyz_thread.xyz_path:
+            self.popup_warning("请先选择保存文件路径")
+        elif self.write_xyz_thread.dem_par:
+            # tif文件拼接后的经纬度
+            lon_w_t = int(self.write_xyz_thread.dem_par[0])
+            lon_e_t = int(self.write_xyz_thread.dem_par[1])
+            lat_n_t = int(self.write_xyz_thread.dem_par[2])
+            lat_s_t = int(self.write_xyz_thread.dem_par[3])
+            if lon_w < lon_w_t or lon_e > lon_e_t or lat_n > lat_n_t or lat_s < lat_s_t:
+                self.popup_warning("经纬度超出范围，请重新设置")
+            else:
+                time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.textEdit_info.append("{} {}".format(time_now, "开始写入文件\n"))
+                self.pushButton_to_xyz.setEnabled(False)
+                self.write_xyz_thread.start()
 
     def write_xyz_success(self, info):
         time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -508,21 +579,27 @@ class ProcessDEM(QWidget, Ui_Form):
         flag = self.write_dem_thread.flag
         if data and new and path and flag:
             time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self.textEdit_info.append("{} {}".format(time_now, "开始制作DEM"))
+            self.textEdit_info.append("{} 开始制作适用于{}的DEM\n".format(time_now, flag))
             self.pushButton_make_dem.setEnabled(False)
             self.write_dem_thread.start()
         elif not data and not new:
-            self.popup_warning("请先读取/拼接tif格式文件")
-        else:
+            self.popup_warning("请先读取/拼接tif文件")
+        elif not path:
             self.popup_warning("请先设置DEM保存路径")
+        else:
+            self.popup_warning("请先选择DEM类型")
 
     def assign_dem_info(self, dem_info):
-        self.write_dem_thread.new = dem_info.split(',')
-        self.doubleSpinBox_lon_w.setValue(int(dem_info.split(',')[0]))
-        self.doubleSpinBox_lon_e.setValue(int(dem_info.split(',')[1]))
-        self.doubleSpinBox_lat_n.setValue(int(dem_info.split(',')[2]))
-        self.doubleSpinBox_lat_s.setValue(int(dem_info.split(',')[3]))
-        self.write_xyz_thread.dem_par = dem_info.split(',')
+        lon_lat = dem_info.split(',')
+        self.write_dem_thread.new = lon_lat
+        self.doubleSpinBox_lon_w.setValue(int(lon_lat[0]))
+        self.doubleSpinBox_lon_e.setValue(int(lon_lat[1]))
+        self.doubleSpinBox_lat_n.setValue(int(lon_lat[2]))
+        self.doubleSpinBox_lat_s.setValue(int(lon_lat[3]))
+        self.write_xyz_thread.dem_par = lon_lat
+        time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.textEdit_info.append(
+            "{} 经纬度范围：{}°~{}° {}°~{}°\n".format(time_now, lon_lat[0], lon_lat[1], lon_lat[3], lon_lat[2]))
 
     def get_tif_path(self):
         files = QFileDialog.getOpenFileNames(
@@ -532,16 +609,25 @@ class ProcessDEM(QWidget, Ui_Form):
 
     def mosaic_data(self):
         if self.textEdit_tif.toPlainText():
+            self.textEdit_info.clear()
             time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self.textEdit_info.append("{} {}".format(time_now, "开始读取/拼接"))
+            self.textEdit_info.append("{} {}".format(time_now, "开始读取/拼接tif文件\n"))
             self.pushButton_mosaic.setEnabled(False)
             self.mosaic_thread.abs_path_list = self.textEdit_tif.toPlainText().split('\n')
             self.mosaic_thread.start()
         else:
-            self.popup_warning("请先选择tif格式文件")
+            self.popup_warning("请先选择tif文件")
 
     def plot_mosaic_data(self):
-        self.popup_warning("加紧实现中...")
+        data = self.mosaic_thread.dem_data
+        if data:
+            fig = PlotFigure(width=5, height=5, dpi=100)
+            fig.axes.imshow(np.array(data), cmap='rainbow')
+            fig.show()
+            time_start = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.textEdit_info.append("{} 绘图完成\n".format(time_start))
+        else:
+            self.popup_warning("请先读取/拼接tif文件")
 
     def get_dem_path(self):
         dem_name = QFileDialog.getSaveFileName(
